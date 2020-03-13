@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 type User struct {
@@ -26,16 +29,48 @@ type UserClaim struct {
 	*jwt.StandardClaims
 }
 
+func signUpHandler(w http.ResponseWriter, req *http.Request) {
+	var user User
+	var userDB User
+	error := json.NewDecoder(req.Body).Decode(&user)
+	if error != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	error = collection.FindOne(context.TODO(),
+		bson.M{"username": user.Username,
+			"password": user.Password}).
+		Decode(&userDB)
+	if userDB != (User{}) {
+		w.WriteHeader(http.StatusNotAcceptable)
+	}
+
+	_, error = collection.InsertOne(context.TODO(), user)
+
+	if error != nil {
+		log.Fatal(error)
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func signInHandler(w http.ResponseWriter, req *http.Request) {
 	var user User
+	var userDB User
 
 	error := json.NewDecoder(req.Body).Decode(&user)
 	if error != nil {
 		http.Error(w, error.Error(), http.StatusBadRequest)
 		return
 	}
-
-	//TODO check if user exists in DB
+	error = collection.FindOne(context.TODO(),
+		bson.M{"username": user.Username,
+			"password": user.Password}).
+		Decode(&userDB)
+	if error != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
 
 	expiresAt := time.Now().Add(time.Minute * 10000).Unix()
 
@@ -94,5 +129,5 @@ func validateToken(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	w.WriteHeader(http.StatusAccepted)
+	w.WriteHeader(http.StatusOK)
 }
