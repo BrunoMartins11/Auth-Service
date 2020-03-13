@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -20,6 +21,11 @@ type UserToken struct {
 	ExpiresIn int64  `json:"expires_in"`
 }
 
+type UserClaim struct {
+	User
+	*jwt.StandardClaims
+}
+
 func signInHandler(w http.ResponseWriter, req *http.Request) {
 	var user User
 
@@ -33,16 +39,20 @@ func signInHandler(w http.ResponseWriter, req *http.Request) {
 
 	expiresAt := time.Now().Add(time.Minute * 10000).Unix()
 
-	token := jwt.New(jwt.SigningMethodHS256)
+	claim := &UserClaim{
+		user,
+		&jwt.StandardClaims{
+			ExpiresAt: expiresAt,
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claim)
 
 	tokenString, error := token.SignedString([]byte("secret"))
 	if error != nil {
 		fmt.Println(error)
 	}
-	//TODO save (token, expiration) in a database
 
 	sendToken(w, tokenString, expiresAt)
-
 }
 
 func sendToken(w http.ResponseWriter, token string, expiresAt int64) {
@@ -52,4 +62,37 @@ func sendToken(w http.ResponseWriter, token string, expiresAt int64) {
 		TokenType: "Bearer",
 		ExpiresIn: expiresAt,
 	})
+}
+
+func validateToken(w http.ResponseWriter, req *http.Request) {
+	bearerToken := req.Header.Get("Authorization")
+	strtoks := strings.Split(bearerToken, " ")
+
+	if len(strtoks) != 2 {
+		w.WriteHeader(http.StatusBadRequest)
+	}
+
+	tokenString := strtoks[1]
+	claim := &UserClaim{}
+
+	token, error := jwt.ParseWithClaims(tokenString, claim, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("There was an error")
+		}
+		return []byte("secret"), nil
+	})
+
+	if error != nil {
+		if error == jwt.ErrSignatureInvalid {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !token.Valid {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
 }
