@@ -11,6 +11,7 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"go.mongodb.org/mongo-driver/bson"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type User struct {
@@ -37,12 +38,18 @@ func signUpHandler(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	error = collection.FindOne(context.TODO(), bson.M{"username": user.Username, "password": user.Password}).Decode(&userDB)
+	error = collection.FindOne(context.TODO(), bson.M{"username": user.Username}).Decode(&userDB)
 
 	if userDB != (User{}) {
 		w.WriteHeader(http.StatusNotAcceptable)
 		return
 	}
+	pwd := []byte(user.Password)
+	hash, err := bcrypt.GenerateFromPassword(pwd, bcrypt.MinCost)
+	if err != nil {
+		log.Println(err)
+	}
+	user.Password = string(hash)
 
 	_, error = collection.InsertOne(context.TODO(), user)
 
@@ -63,10 +70,9 @@ func signInHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	error = collection.FindOne(context.TODO(),
-		bson.M{"username": user.Username,
-			"password": user.Password}).
+		bson.M{"username": user.Username}).
 		Decode(&userDB)
-	if error != nil {
+	if error != nil || !comparePassword(userDB.Password, user.Password) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -129,4 +135,13 @@ func validateToken(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+func comparePassword(hash string, password string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+	return true
 }
