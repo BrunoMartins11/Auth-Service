@@ -37,12 +37,11 @@ func signUpHandler(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	error = collection.FindOne(context.TODO(),
-		bson.M{"username": user.Username,
-			"password": user.Password}).
-		Decode(&userDB)
+	error = collection.FindOne(context.TODO(), bson.M{"username": user.Username, "password": user.Password}).Decode(&userDB)
+
 	if userDB != (User{}) {
 		w.WriteHeader(http.StatusNotAcceptable)
+		return
 	}
 
 	_, error = collection.InsertOne(context.TODO(), user)
