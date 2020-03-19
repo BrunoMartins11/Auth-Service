@@ -28,7 +28,7 @@ Get dependencies
 
 ```make build```
 
-Generates a executable
+Generates an executable
 
 #### Run
 
